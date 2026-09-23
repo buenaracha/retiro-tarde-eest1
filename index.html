@@ -300,28 +300,39 @@ async function buscarRetiro() {
   }
 }
 
+// Variable para evitar ejecuciones múltiples al detectar un código
+let procesandoEscaneo = false;
+
 // Escáner de DNI (PDF417)
 function iniciarEscanerDNI() {
   document.getElementById('reader-container').style.display = 'block';
   document.getElementById('btnActivarEscaner').disabled = true;
+  procesandoEscaneo = false;
 
-  html5QrCode = new Html5Qrcode("reader");
+  if (!html5QrCode) {
+    html5QrCode = new Html5Qrcode("reader");
+  }
+
   const config = { 
-    fps: 15, 
-    qrbox: { width: 300, height: 150 },
+    fps: 10, 
+    qrbox: { width: 280, height: 140 },
     formatsToSupport: [ Html5QrcodeSupportedFormats.PDF_417 ]
   };
 
   html5QrCode.start(
     { facingMode: "environment" }, 
     config, 
-    (decodedText) => {
-      // Éxito al escanear: procesa e imprime en pantalla
+    async (decodedText) => {
+      // Si ya capturó un código válido, ignora las lecturas subsiguientes mientras se apaga
+      if (procesandoEscaneo) return;
+      procesandoEscaneo = true;
+
+      // Apagamos la cámara primero y luego procesamos los datos DNI
+      await detenerEscaner();
       procesarCodigoDNI(decodedText);
-      detenerEscaner();
     },
     (errorMessage) => {
-      // Errores de frame (normal durante la lectura continua)
+      // Ignorar errores frame a frame
     }
   ).catch(err => {
     console.error("Error al iniciar cámara:", err);
@@ -330,7 +341,29 @@ function iniciarEscanerDNI() {
   });
 }
 
-function detenerEscaner() {
+async function detenerEscaner() {
+  const container = document.getElementById('reader-container');
+  const btnActivar = document.getElementById('btnActivarEscaner');
+
+  if (html5QrCode) {
+    try {
+      // Validamos si efectivamente la cámara está escaneando antes de detener
+      if (html5QrCode.isScanning) {
+        await html5QrCode.stop();
+      }
+      html5QrCode.clear();
+    } catch (err) {
+      // Si entra acá es porque el escáner ya estaba detenido/pausado.
+      // Lo capturamos silenciosamente para que la app continúe sin errores en pantalla.
+      console.warn("Aviso de cámara al detener:", err);
+    }
+  }
+
+  if (container) container.style.display = 'none';
+  if (btnActivar) btnActivar.disabled = false;
+}
+
+function detenerEscanerOri() {
   if (html5QrCode) {
     html5QrCode.stop().then(() => {
       html5QrCode.clear();
