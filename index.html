@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏫</text></svg>">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control Institucional - Llegadas Tarde y Retiros</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+  body { background: #f0f4f8; min-height: 100vh; display: flex; justify-content: center; align-items: flex-start; padding: 15px; }
+  .container { background: #fff; max-width: 500px; width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.12); padding: 24px; margin-top: 10px; }
+  
+  /* Navegación por pestañas */
+  .nav-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
+  .tab-btn { flex: 1; padding: 10px; font-size: 1rem; font-weight: 600; border: none; background: #e9ecef; color: #495057; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+  .tab-btn.active { background: #1a3c6e; color: #fff; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  h1 { font-size: 1.3rem; color: #1a3c6e; margin-bottom: 6px; }
+  .sub { color: #666; font-size: .88rem; margin-bottom: 18px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; color: #333; font-size: 0.95rem; }
+  input[type="text"] { width: 100%; padding: 12px; font-size: 1.2rem; letter-spacing: 2px; border: 2px solid #ccd6e0; border-radius: 8px; text-align: center; }
+  input[type="text"]:focus { outline: none; border-color: #1a73e8; }
+  
+  .btn { width: 100%; padding: 12px; font-size: 1.05rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; margin-top: 12px; transition: background 0.2s; }
+  .btn-buscar { background: #1a73e8; color: #fff; }
+  .btn-escanear { background: #6f42c1; color: #fff; }
+  .btn-confirmar { background: #2e7d32; color: #fff; }
+  .btn-cancelar { background: #c62828; color: #fff; margin-top: 8px; }
+  .btn:disabled { background: #9e9e9e; cursor: not-allowed; }
+  
+  .card-box { margin-top: 16px; padding: 16px; border-radius: 8px; display: none; }
+  .card-estudiante { background: #e8f0fe; border-left: 5px solid #1a73e8; }
+  .card-adulto { background: #f3e5f5; border-left: 5px solid #6f42c1; }
+  .card-box h2 { color: #1a3c6e; font-size: 1.2rem; margin-bottom: 4px; }
+  .card-box p { color: #333; font-size: 0.95rem; margin-top: 2px; }
+  
+  /* Lector QR/PDF417 */
+  #reader-container { display: none; margin-top: 15px; background: #000; border-radius: 8px; overflow: hidden; position: relative; }
+  #reader { width: 100%; }
+
+  .mensaje { margin-top: 16px; padding: 12px; border-radius: 8px; text-align: center; font-weight: 600; display: none; font-size: 0.95rem; }
+  .ok { background: #e6f4ea; color: #1e7e34; }
+  .error { background: #fdecea; color: #b71c1c; }
+  .hora-actual { text-align: center; color: #888; font-size: .85rem; margin-top: 20px; }
+</style>
+<base target="_blank">
+</head>
+<body>
+<div class="container">
+  <!-- Navegación de la Aplicación -->
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="cambiarTab('llegadas')">🕐 Llegadas Tarde</button>
+    <button class="tab-btn" onclick="cambiarTab('retiros')">🚪 Retiros</button>
+  </div>
+
+  <!-- PESTAÑA 1: LLEGADAS TARDE -->
+  <div id="tab-llegadas" class="tab-content active">
+    <h1>🕐 Registro de Llegadas Tarde</h1>
+    <p class="sub">Ingrese el DNI del estudiante (8 dígitos, sin puntos)</p>
+
+    <label for="dni-llegada">DNI del estudiante</label>
+    <input type="text" id="dni-llegada" maxlength="8" inputmode="numeric" placeholder="12345678" autocomplete="off">
+    <button class="btn btn-buscar" onclick="buscarLlegada()">🔍 Buscar Estudiante</button>
+
+    <div class="card-box card-estudiante" id="res-llegada">
+      <h2 id="lblNombre-llegada"></h2>
+      <p id="lblCurso-llegada"></p>
+      <button class="btn btn-confirmar" id="btnConfirmar-llegada" onclick="confirmarLlegada()">✅ Confirmar llegada tarde</button>
+      <button class="btn btn-cancelar" onclick="cancelarLlegada()">❌ Cancelar</button>
+    </div>
+  </div>
+
+  <!-- PESTAÑA 2: RETIROS -->
+  <div id="tab-retiros" class="tab-content">
+    <h1>🚪 Registro de Retiro Anticipado</h1>
+    <p class="sub">Busque al estudiante y luego escanee el DNI del adulto responsable</p>
+
+    <label for="dni-retiro">DNI del estudiante</label>
+    <input type="text" id="dni-retiro" maxlength="8" inputmode="numeric" placeholder="12345678" autocomplete="off">
+    <button class="btn btn-buscar" id="btnBuscar-retiro" onclick="buscarRetiro()">🔍 Buscar Estudiante</button>
+
+    <!-- Datos Estudiante a Retirar -->
+    <div class="card-box card-estudiante" id="res-estudiante-retiro">
+      <h2 id="lblNombre-retiro"></h2>
+      <p id="lblCurso-retiro"></p>
+      <button class="btn btn-escanear" id="btnActivarEscaner" onclick="iniciarEscanerDNI()">📷 Escanear DNI Adulto</button>
+    </div>
+
+    <!-- Visor de la Cámara -->
+    <div id="reader-container">
+      <div id="reader"></div>
+      <button class="btn btn-cancelar" style="border-radius: 0;" onclick="detenerEscaner()">❌ Cerrar Cámara</button>
+    </div>
+
+    <!-- Datos Adulto Responsable Escaneado -->
+    <div class="card-box card-adulto" id="res-adulto-retiro">
+      <h2 id="lblAdultoNombre"></h2>
+      <p id="lblAdultoDNI"></p>
+      <button class="btn btn-confirmar" id="btnConfirmar-retiro" onclick="confirmarRetiro()">✅ Registrar Retiro</button>
+      <button class="btn btn-cancelar" onclick="cancelarRetiro()">❌ Cancelar Operación</button>
+    </div>
+  </div>
+
+  <div class="mensaje" id="mensaje"></div>
+  <p class="hora-actual" id="reloj"></p>
+</div>
+
+<script>
+// ============ CONFIGURACIÓN DE FIREBASE ============
+const firebaseConfig = {
+  apiKey: "AIzaSyBRxD3T0t-rzGMs8xl7BmfiuSBu_bw3bOw",
+  authDomain: "tarde-eest1.firebaseapp.com",
+  projectId: "tarde-eest1",
+  storageBucket: "tarde-eest1.firebasestorage.app",
+  messagingSenderId: "835462821695",
+  appId: "1:835462821695:web:469ce61fa1407c731d858a"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// Variables Globales de Estado
+let estudianteLlegada = null;
+let estudianteRetiro = null;
+let adultoRetiro = null;
+let html5QrCode = null;
+
+// Reloj en tiempo real
+setInterval(() => {
+  const ahora = new Date();
+  document.getElementById('reloj').textContent =
+    'Hora actual: ' + ahora.toLocaleTimeString('es-AR', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+}, 1000);
+
+// Enter en los inputs
+document.getElementById('dni-llegada').addEventListener('keydown', (e) => { if (e.key === 'Enter') buscarLlegada(); });
+document.getElementById('dni-retiro').addEventListener('keydown', (e) => { if (e.key === 'Enter') buscarRetiro(); });
+
+function cambiarTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  
+  if (tab === 'llegadas') {
+    document.querySelectorAll('.tab-btn')[0].classList.add('active');
+    document.getElementById('tab-llegadas').classList.add('active');
+    cancelarRetiro();
+    document.getElementById('dni-llegada').focus();
+  } else {
+    document.querySelectorAll('.tab-btn')[1].classList.add('active');
+    document.getElementById('tab-retiros').classList.add('active');
+    cancelarLlegada();
+    document.getElementById('dni-retiro').focus();
+  }
+}
+
+function mostrarMensaje(texto, esError) {
+  const m = document.getElementById('mensaje');
+  m.textContent = texto;
+  m.className = 'mensaje ' + (esError ? 'error' : 'ok');
+  m.style.display = 'block';
+  setTimeout(() => { m.style.display = 'none'; }, 5000);
+}
+
+// ==========================================================
+// PESTAÑA 1: LLEGADAS TARDE
+// ==========================================================
+function turnoDeMinutos(minutos) {
+  if (minutos >= 7 * 60 + 20 && minutos <= 11 * 60 + 40) return 'Mañana';
+  if (minutos >= 13 * 60 && minutos <= 17 * 60 + 20) return 'Tarde';
+  if (minutos >= 17 * 60 + 45 && minutos <= 22 * 60 + 20) return 'Noche';
+  return null;
+}
+
+async function buscarLlegada() {
+  const dni = document.getElementById('dni-llegada').value.trim();
+  if (!/^[0-9]{8}$/.test(dni)) {
+    mostrarMensaje('⚠️ El DNI debe tener exactamente 8 dígitos numéricos.', true);
+    return;
+  }
+
+  document.getElementById('res-llegada').style.display = 'none';
+  mostrarMensaje('Buscando...', false);
+
+  try {
+    const doc = await db.collection('estudiantes').doc(dni).get();
+    if (!doc.exists) {
+      mostrarMensaje('❌ No se encontró ningún estudiante con el DNI ' + dni, true);
+      estudianteLlegada = null;
+      return;
+    }
+
+    estudianteLlegada = { dni: dni, ...doc.data() };
+    document.getElementById('lblNombre-llegada').textContent = estudianteLlegada.apellidoNombre;
+    document.getElementById('lblCurso-llegada').textContent = '📚 Curso: ' + estudianteLlegada.curso;
+    document.getElementById('res-llegada').style.display = 'block';
+    document.getElementById('mensaje').style.display = 'none';
+
+  } catch (error) {
+    console.error(error);
+    mostrarMensaje('❌ Error al conectar con la base de datos.', true);
+  }
+}
+
+async function confirmarLlegada() {
+  if (!estudianteLlegada) return;
+  const btn = document.getElementById('btnConfirmar-llegada');
+  btn.disabled = true;
+
+  const ahora = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fecha = ahora.getFullYear() + '-' + pad(ahora.getMonth() + 1) + '-' + pad(ahora.getDate());
+  const hora = pad(ahora.getHours()) + ':' + pad(ahora.getMinutes());
+  const turnoActual = turnoDeMinutos(ahora.getHours() * 60 + ahora.getMinutes());
+
+  try {
+    if (turnoActual) {
+      const snap = await db.collection('llegadas_tarde').where('dni', '==', estudianteLlegada.dni).get();
+      const yaRegistrado = snap.docs.some((d) => {
+        const r = d.data();
+        if (r.fecha !== fecha) return false;
+        const p = String(r.hora).split(':');
+        return turnoDeMinutos(Number(p[0]) * 60 + Number(p[1])) === turnoActual;
+      });
+      if (yaRegistrado) {
+        mostrarMensaje('⚠️ ' + estudianteLlegada.apellidoNombre + ' YA figura con llegada tarde HOY en el turno ' + turnoActual + '.', true);
+        return;
+      }
+    }
+
+    await db.collection('llegadas_tarde').add({
+      dni: estudianteLlegada.dni,
+      apellidoNombre: estudianteLlegada.apellidoNombre,
+      curso: estudianteLlegada.curso,
+      correo: estudianteLlegada.correo || '',
+      fecha: fecha,
+      hora: hora,
+      notificado: false,
+      creadoEl: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    const fechaMostrar = fecha.split('-').reverse().join('/');
+    const msgTurno = turnoActual ? ' — Turno ' + turnoActual : '';
+    mostrarMensaje('✅ Registrado: ' + estudianteLlegada.apellidoNombre + ' (' + fechaMostrar + ' ' + hora + ' hs)' + msgTurno, false);
+    cancelarLlegada();
+
+  } catch (error) {
+    console.error(error);
+    mostrarMensaje('❌ Error al guardar el registro.', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function cancelarLlegada() {
+  estudianteLlegada = null;
+  document.getElementById('res-llegada').style.display = 'none';
+  document.getElementById('dni-llegada').value = '';
+}
+
+// ==========================================================
+// PESTAÑA 2: RETIROS DE ESTUDIANTES
+// ==========================================================
+async function buscarRetiro() {
+  const dni = document.getElementById('dni-retiro').value.trim();
+  if (!/^[0-9]{8}$/.test(dni)) {
+    mostrarMensaje('⚠️ El DNI debe tener exactamente 8 dígitos numéricos.', true);
+    return;
+  }
+
+  document.getElementById('res-estudiante-retiro').style.display = 'none';
+  document.getElementById('res-adulto-retiro').style.display = 'none';
+  detenerEscaner();
+  mostrarMensaje('Buscando estudiante...', false);
+
+  try {
+    const doc = await db.collection('estudiantes').doc(dni).get();
+    if (!doc.exists) {
+      mostrarMensaje('❌ No se encontró ningún estudiante con el DNI ' + dni, true);
+      estudianteRetiro = null;
+      return;
+    }
+
+    estudianteRetiro = { dni: dni, ...doc.data() };
+    document.getElementById('lblNombre-retiro').textContent = estudianteRetiro.apellidoNombre;
+    document.getElementById('lblCurso-retiro').textContent = '📚 Curso: ' + estudianteRetiro.curso;
+    document.getElementById('res-estudiante-retiro').style.display = 'block';
+    document.getElementById('mensaje').style.display = 'none';
+
+  } catch (error) {
+    console.error(error);
+    mostrarMensaje('❌ Error al conectar con la base de datos.', true);
+  }
+}
+
+// Escáner de DNI (PDF417)
+function iniciarEscanerDNI() {
+  document.getElementById('reader-container').style.display = 'block';
+  document.getElementById('btnActivarEscaner').disabled = true;
+
+  html5QrCode = new Html5Qrcode("reader");
+  const config = { 
+    fps: 15, 
+    qrbox: { width: 300, height: 150 },
+    formatsToSupport: [ Html5QrcodeSupportedFormats.PDF_417 ]
+  };
+
+  html5QrCode.start(
+    { facingMode: "environment" }, 
+    config, 
+    (decodedText) => {
+      // Éxito al escanear
+      procesarCodigoDNI(decodedText);
+      detenerEscaner();
+    },
+    (errorMessage) => {
+      // Errores de frame (normal durante el escaneo)
+    }
+  ).catch(err => {
+    console.error("Error al iniciar cámara:", err);
+    mostrarMensaje('❌ No se pudo acceder a la cámara del dispositivo.', true);
+    detenerEscaner();
+  });
+}
+
+function detenerEscaner() {
+  if (html5QrCode) {
+    html5QrCode.stop().then(() => {
+      html5QrCode.clear();
+      document.getElementById('reader-container').style.display = 'none';
+      document.getElementById('btnActivarEscaner').disabled = false;
+    }).catch(err => console.error(err));
+  } else {
+    document.getElementById('reader-container').style.display = 'none';
+    document.getElementById('btnActivarEscaner').disabled = false;
+  }
+}
+
+// Parser del código PDF417 de la tarjeta de DNI
+function procesarCodigoDNI(codigo) {
+  const datos = codigo.split('@');
+  
+  if (datos.length >= 8) {
+    // Estructura habitual DNI: Tramite@Apellido@Nombre@Sexo@DNI...
+    const apellido = datos[1].trim();
+    const nombre = datos[2].trim();
+    const dniAdulto = datos[4].trim();
+
+    adultoRetiro = {
+      apellidoNombre: `${apellido}, ${nombre}`,
+      dni: dniAdulto,
+      raw: codigo
+    };
+
+    document.getElementById('lblAdultoNombre').textContent = '👤 Retira: ' + adultoRetiro.apellidoNombre;
+    document.getElementById('lblAdultoDNI').textContent = '🪪 DNI Adulto: ' + adultoRetiro.dni;
+    document.getElementById('res-adulto-retiro').style.display = 'block';
+    mostrarMensaje('✅ DNI de adulto escaneado correctamente.', false);
+
+  } else {
+    mostrarMensaje('⚠️ Código DNI no reconocido. Intente nuevamente.', true);
+  }
+}
+
+async function confirmarRetiro() {
+  if (!estudianteRetiro || !adultoRetiro) return;
+
+  const btn = document.getElementById('btnConfirmar-retiro');
+  btn.disabled = true;
+
+  const ahora = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fecha = ahora.getFullYear() + '-' + pad(ahora.getMonth() + 1) + '-' + pad(ahora.getDate());
+  const hora = pad(ahora.getHours()) + ':' + pad(ahora.getMinutes());
+
+  try {
+    await db.collection('retiros').add({
+      // Datos Estudiante
+      dniEstudiante: estudianteRetiro.dni,
+      apellidoNombreEstudiante: estudianteRetiro.apellidoNombre,
+      curso: estudianteRetiro.curso,
+      correo: estudianteRetiro.correo || '',
+      
+      // Datos Adulto Responsable
+      dniAdulto: adultoRetiro.dni,
+      apellidoNombreAdulto: adultoRetiro.apellidoNombre,
+      
+      // Metadatos
+      fecha: fecha,
+      hora: hora,
+      notificado: false,
+      creadoEl: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    const fechaMostrar = fecha.split('-').reverse().join('/');
+    mostrarMensaje(`✅ RETIRO REGISTRADO: ${estudianteRetiro.apellidoNombre} fue retirado/a por ${adultoRetiro.apellidoNombre} (${fechaMostrar} ${hora} hs)`, false);
+    cancelarRetiro();
+
+  } catch (error) {
+    console.error(error);
+    mostrarMensaje('❌ Error al registrar el retiro en Firestore.', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function cancelarRetiro() {
+  estudianteRetiro = null;
+  adultoRetiro = null;
+  detenerEscaner();
+  document.getElementById('res-estudiante-retiro').style.display = 'none';
+  document.getElementById('res-adulto-retiro').style.display = 'none';
+  document.getElementById('dni-retiro').value = '';
+}
+</script>
+</body>
+</html>
