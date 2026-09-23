@@ -314,12 +314,12 @@ function iniciarEscanerDNI() {
     { facingMode: "environment" }, 
     config, 
     (decodedText) => {
-      // Éxito al escanear
+      // Éxito al escanear: procesa e imprime en pantalla
       procesarCodigoDNI(decodedText);
       detenerEscaner();
     },
     (errorMessage) => {
-      // Errores de frame (normal durante el escaneo)
+      // Errores de frame (normal durante la lectura continua)
     }
   ).catch(err => {
     console.error("Error al iniciar cámara:", err);
@@ -334,74 +334,62 @@ function detenerEscaner() {
       html5QrCode.clear();
       document.getElementById('reader-container').style.display = 'none';
       document.getElementById('btnActivarEscaner').disabled = false;
-    }).catch(err => console.error(err));
+    }).catch(err => {
+      console.error(err);
+      document.getElementById('reader-container').style.display = 'none';
+      document.getElementById('btnActivarEscaner').disabled = false;
+    });
   } else {
     document.getElementById('reader-container').style.display = 'none';
     document.getElementById('btnActivarEscaner').disabled = false;
   }
 }
 
-// Parser del código PDF417 de la tarjeta de DNI
-function procesarCodigoDNIOri(codigo) {
-  const datos = codigo.split('@');
-  
-  if (datos.length >= 8) {
-    // Estructura habitual DNI: Tramite@Apellido@Nombre@Sexo@DNI...
-    const apellido = datos[1].trim();
-    const nombre = datos[2].trim();
-    const dniAdulto = datos[4].trim();
+// Parser unificado del código PDF417 de DNI Argentino
+function procesarCodigoDNI(codigoEscaneado) {
+  try {
+    const textoLimpio = codigoEscaneado.trim().replace(/[\r\n]+/g, '');
+    const datos = textoLimpio.split('@');
+    
+    let apellido = "";
+    let nombre = "";
+    let dni = "";
 
+    if (datos.length >= 5) {
+      // Búsqueda dinámica del DNI (campo numérico de 7 u 8 dígitos)
+      const posibleDni = datos.find(item => /^\d{7,8}$/.test(item.trim()));
+      
+      apellido = (datos[1] || "").trim();
+      nombre = (datos[2] || "").trim();
+      dni = posibleDni ? posibleDni.trim() : (datos[4] || "").trim();
+    } else {
+      mostrarMensaje('⚠️ Código DNI no reconocido.', true);
+      return;
+    }
+
+    if (!dni || !apellido) {
+      mostrarMensaje('⚠️ No se pudieron leer con claridad los datos del DNI.', true);
+      return;
+    }
+
+    // Guardamos en la variable global
     adultoRetiro = {
+      apellido: apellido,
+      nombre: nombre,
       apellidoNombre: `${apellido}, ${nombre}`,
-      dni: dniAdulto,
-      raw: codigo
+      dni: dni
     };
 
+    // Renderizamos la tarjeta en la pantalla
     document.getElementById('lblAdultoNombre').textContent = '👤 Retira: ' + adultoRetiro.apellidoNombre;
     document.getElementById('lblAdultoDNI').textContent = '🪪 DNI Adulto: ' + adultoRetiro.dni;
     document.getElementById('res-adulto-retiro').style.display = 'block';
-    mostrarMensaje('✅ DNI de adulto escaneado correctamente.', false);
+    mostrarMensaje('✅ DNI escaneado correctamente.', false);
 
-  } else {
-    mostrarMensaje('⚠️ Código DNI no reconocido. Intente nuevamente.', true);
+  } catch (e) {
+    console.error(e);
+    mostrarMensaje('❌ Error al procesar el código del DNI.', true);
   }
-}
-
-function procesarCodigoDNI(codigoEscaneado) {
-  // Limpiamos saltos de línea o caracteres extraños que puedan venir del lector
-  const textoLimpio = codigoEscaneado.trim().replace(/[\r\n]+/g, '');
-  const datos = textoLimpio.split('@');
-  
-  let apellido = "";
-  let nombre = "";
-  let dni = "";
-
-  // DNI tipo A/B/C habituales (formato estándar de 8 o más campos)
-  if (datos.length >= 5) {
-    // En la mayoría de las versiones de DNI argentino:
-    // datos[1] = Apellido, datos[2] = Nombre, datos[4] = DNI
-    // O en versiones más viejas/especiales pueden variar los índices
-    
-    // Evaluamos dónde está el DNI (suele ser el campo numérico de 7 u 8 dígitos)
-    const posibleDni = datos.find(item => /^\d{7,8}$/.test(item.trim()));
-    
-    apellido = (datos[1] || "").trim();
-    nombre = (datos[2] || "").trim();
-    dni = posibleDni ? posibleDni.trim() : (datos[4] || "").trim();
-  } else {
-    throw new Error("El código escaneado no tiene el formato esperado del DNI argentino.");
-  }
-
-  // Sanitización de seguridad: NUNCA enviar valores vacíos o undefined a Firestore
-  if (!dni || !apellido) {
-    throw new Error("No se pudieron extraer el DNI y Apellido del código escaneado.");
-  }
-
-  return {
-    apellido: apellido || "NO ESPECIFICADO",
-    nombre: nombre || "NO ESPECIFICADO",
-    dni: dni || "0"
-  };
 }
 
 async function confirmarRetiro() {
@@ -417,24 +405,25 @@ async function confirmarRetiro() {
 
   try {
     await db.collection('retiros').add({
-  // Datos Estudiante
-  dniEstudiante: estudianteRetiro.dni || '',
-  apellidoNombreEstudiante: estudianteRetiro.apellidoNombre || '',
-  curso: estudianteRetiro.curso || '',
-  correo: estudianteRetiro.correo || '',
-  
-  // Datos Adulto Responsable
-  dniAdulto: adultoRetiro.dni || '',
-  apellidoNombreAdulto: (adultoRetiro.apellido + ', ' + adultoRetiro.nombre).trim(),
-  
-  // Metadatos
-  fecha: fecha,
-  hora: hora,
-  notificado: false,
-  creadoEl: firebase.firestore.FieldValue.serverTimestamp()
-});
+      // Datos Estudiante
+      dniEstudiante: estudianteRetiro.dni || '',
+      apellidoNombreEstudiante: estudianteRetiro.apellidoNombre || '',
+      curso: estudianteRetiro.curso || '',
+      correo: estudianteRetiro.correo || '',
+      
+      // Datos Adulto Responsable
+      dniAdulto: adultoRetiro.dni || '',
+      apellidoNombreAdulto: adultoRetiro.apellidoNombre || '',
+      
+      // Metadatos
+      fecha: fecha,
+      hora: hora,
+      notificado: false,
+      creadoEl: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
     const fechaMostrar = fecha.split('-').reverse().join('/');
-    mostrarMensaje(`✅ RETIRO REGISTRADO: ${estudianteRetiro.apellidoNombre} fue retirado/a por ${adultoRetiro.apellidoNombre} (${fechaMostrar} ${hora} hs)`, false);
+    mostrarMensaje(`✅ RETIRO REGISTRADO: ${estudianteRetiro.apellidoNombre} retirado/a por ${adultoRetiro.apellidoNombre} (${fechaMostrar} ${hora} hs)`, false);
     cancelarRetiro();
 
   } catch (error) {
