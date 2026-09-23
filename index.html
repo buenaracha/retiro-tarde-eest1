@@ -342,7 +342,7 @@ function detenerEscaner() {
 }
 
 // Parser del código PDF417 de la tarjeta de DNI
-function procesarCodigoDNI(codigo) {
+function procesarCodigoDNIOri(codigo) {
   const datos = codigo.split('@');
   
   if (datos.length >= 8) {
@@ -367,6 +367,43 @@ function procesarCodigoDNI(codigo) {
   }
 }
 
+function procesarCodigoDNI(codigoEscaneado) {
+  // Limpiamos saltos de línea o caracteres extraños que puedan venir del lector
+  const textoLimpio = codigoEscaneado.trim().replace(/[\r\n]+/g, '');
+  const datos = textoLimpio.split('@');
+  
+  let apellido = "";
+  let nombre = "";
+  let dni = "";
+
+  // DNI tipo A/B/C habituales (formato estándar de 8 o más campos)
+  if (datos.length >= 5) {
+    // En la mayoría de las versiones de DNI argentino:
+    // datos[1] = Apellido, datos[2] = Nombre, datos[4] = DNI
+    // O en versiones más viejas/especiales pueden variar los índices
+    
+    // Evaluamos dónde está el DNI (suele ser el campo numérico de 7 u 8 dígitos)
+    const posibleDni = datos.find(item => /^\d{7,8}$/.test(item.trim()));
+    
+    apellido = (datos[1] || "").trim();
+    nombre = (datos[2] || "").trim();
+    dni = posibleDni ? posibleDni.trim() : (datos[4] || "").trim();
+  } else {
+    throw new Error("El código escaneado no tiene el formato esperado del DNI argentino.");
+  }
+
+  // Sanitización de seguridad: NUNCA enviar valores vacíos o undefined a Firestore
+  if (!dni || !apellido) {
+    throw new Error("No se pudieron extraer el DNI y Apellido del código escaneado.");
+  }
+
+  return {
+    apellido: apellido || "NO ESPECIFICADO",
+    nombre: nombre || "NO ESPECIFICADO",
+    dni: dni || "0"
+  };
+}
+
 async function confirmarRetiro() {
   if (!estudianteRetiro || !adultoRetiro) return;
 
@@ -380,23 +417,22 @@ async function confirmarRetiro() {
 
   try {
     await db.collection('retiros').add({
-      // Datos Estudiante
-      dniEstudiante: estudianteRetiro.dni,
-      apellidoNombreEstudiante: estudianteRetiro.apellidoNombre,
-      curso: estudianteRetiro.curso,
-      correo: estudianteRetiro.correo || '',
-      
-      // Datos Adulto Responsable
-      dniAdulto: adultoRetiro.dni,
-      apellidoNombreAdulto: adultoRetiro.apellidoNombre,
-      
-      // Metadatos
-      fecha: fecha,
-      hora: hora,
-      notificado: false,
-      creadoEl: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
+  // Datos Estudiante
+  dniEstudiante: estudianteRetiro.dni || '',
+  apellidoNombreEstudiante: estudianteRetiro.apellidoNombre || '',
+  curso: estudianteRetiro.curso || '',
+  correo: estudianteRetiro.correo || '',
+  
+  // Datos Adulto Responsable
+  dniAdulto: adultoRetiro.dni || '',
+  apellidoNombreAdulto: (adultoRetiro.apellido + ', ' + adultoRetiro.nombre).trim(),
+  
+  // Metadatos
+  fecha: fecha,
+  hora: hora,
+  notificado: false,
+  creadoEl: firebase.firestore.FieldValue.serverTimestamp()
+});
     const fechaMostrar = fecha.split('-').reverse().join('/');
     mostrarMensaje(`✅ RETIRO REGISTRADO: ${estudianteRetiro.apellidoNombre} fue retirado/a por ${adultoRetiro.apellidoNombre} (${fechaMostrar} ${hora} hs)`, false);
     cancelarRetiro();
