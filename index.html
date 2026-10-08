@@ -13,20 +13,31 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
   body { background: #f0f4f8; min-height: 100vh; display: flex; justify-content: center; align-items: flex-start; padding: 15px; }
-  .container { background: #fff; max-width: 500px; width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.12); padding: 24px; margin-top: 10px; }
+  
+  .container { 
+    background: #fff; 
+    max-width: 500px; 
+    width: 100%; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 12px rgba(0,0,0,.12); 
+    padding: 24px; 
+    margin-top: 10px; 
+    display: flex;
+    flex-direction: column;
+  }
   
   /* Navegación por pestañas */
-  .nav-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
-  .tab-btn { flex: 1; padding: 10px; font-size: 1rem; font-weight: 600; border: none; background: #e9ecef; color: #495057; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+  .nav-tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; width: 100%; }
+  .tab-btn { flex: 1; padding: 10px 4px; font-size: 0.88rem; font-weight: 600; border: none; background: #e9ecef; color: #495057; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; }
   .tab-btn.active { background: #1a3c6e; color: #fff; }
 
-  .tab-content { display: none; }
+  .tab-content { display: none; width: 100%; }
   .tab-content.active { display: block; }
 
   h1 { font-size: 1.3rem; color: #1a3c6e; margin-bottom: 6px; }
   .sub { color: #666; font-size: .88rem; margin-bottom: 18px; }
   label { display: block; font-weight: 600; margin-bottom: 6px; color: #333; font-size: 0.95rem; }
-  input[type="text"] { width: 100%; padding: 12px; font-size: 1.2rem; letter-spacing: 2px; border: 2px solid #ccd6e0; border-radius: 8px; text-align: center; }
+  input[type="text"] { width: 100%; padding: 12px; font-size: 1.2rem; letter-spacing: 1px; border: 2px solid #ccd6e0; border-radius: 8px; text-align: center; }
   input[type="text"]:focus { outline: none; border-color: #1a73e8; }
   
   .btn { width: 100%; padding: 12px; font-size: 1.05rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; margin-top: 12px; transition: background 0.2s; }
@@ -42,6 +53,14 @@
   .card-box h2 { color: #1a3c6e; font-size: 1.2rem; margin-bottom: 4px; }
   .card-box p { color: #333; font-size: 0.95rem; margin-top: 2px; }
   
+  /* Tabla de Búsqueda de Estudiantes */
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+  th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #eee; }
+  th { background: #f5f7fa; color: #1a3c6e; font-weight: 600; }
+  .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; }
+  .badge-ok { background: #e6f4ea; color: #1e7e34; }
+  .total { font-size: 0.95rem; font-weight: 600; color: #1a3c6e; margin-top: 10px; }
+
   /* Lector QR/PDF417 */
   #reader-container { display: none; margin-top: 15px; background: #000; border-radius: 8px; overflow: hidden; position: relative; }
   #reader { width: 100%; }
@@ -59,6 +78,7 @@
   <div class="nav-tabs">
     <button class="tab-btn active" onclick="cambiarTab('llegadas')">🕐 Llegadas Tarde</button>
     <button class="tab-btn" onclick="cambiarTab('retiros')">🚪 Retiros</button>
+    <button class="tab-btn" onclick="cambiarTab('estudiantes')">🔍 Buscar Curso</button>
   </div>
 
   <!-- PESTAÑA 1: LLEGADAS TARDE -->
@@ -109,6 +129,19 @@
     </div>
   </div>
 
+  <!-- PESTAÑA 3: BÚSQUEDA RÁPIDA DE ESTUDIANTES -->
+  <div id="tab-estudiantes" class="tab-content">
+    <h1>🔍 Consulta de Estudiantes y Curso</h1>
+    <p class="sub">Escriba el apellido del estudiante (mínimo 4 caracteres)</p>
+
+    <div style="margin-bottom: 15px;">
+      <input type="text" id="inputBuscarEstudiante" placeholder="Ej: Perez o Gonzalez..." style="text-transform: capitalize;" autocomplete="off">
+    </div>
+
+    <div class="total" id="totalCoincidencias"></div>
+    <div id="tablaResultadosEstudiantes"></div>
+  </div>
+
   <div class="mensaje" id="mensaje"></div>
   <p class="hora-actual" id="reloj"></p>
 </div>
@@ -153,11 +186,17 @@ function cambiarTab(tab) {
     document.getElementById('tab-llegadas').classList.add('active');
     cancelarRetiro();
     document.getElementById('dni-llegada').focus();
-  } else {
+  } else if (tab === 'retiros') {
     document.querySelectorAll('.tab-btn')[1].classList.add('active');
     document.getElementById('tab-retiros').classList.add('active');
     cancelarLlegada();
     document.getElementById('dni-retiro').focus();
+  } else if (tab === 'estudiantes') {
+    document.querySelectorAll('.tab-btn')[2].classList.add('active');
+    document.getElementById('tab-estudiantes').classList.add('active');
+    cancelarLlegada();
+    cancelarRetiro();
+    document.getElementById('inputBuscarEstudiante').focus();
   }
 }
 
@@ -300,10 +339,8 @@ async function buscarRetiro() {
   }
 }
 
-// Variable para evitar ejecuciones múltiples al detectar un código
 let procesandoEscaneo = false;
 
-// Escáner de DNI (PDF417)
 function iniciarEscanerDNI() {
   document.getElementById('reader-container').style.display = 'block';
   document.getElementById('btnActivarEscaner').disabled = true;
@@ -323,17 +360,13 @@ function iniciarEscanerDNI() {
     { facingMode: "environment" }, 
     config, 
     async (decodedText) => {
-      // Si ya capturó un código válido, ignora las lecturas subsiguientes mientras se apaga
       if (procesandoEscaneo) return;
       procesandoEscaneo = true;
 
-      // Apagamos la cámara primero y luego procesamos los datos DNI
       await detenerEscaner();
       procesarCodigoDNI(decodedText);
     },
-    (errorMessage) => {
-      // Ignorar errores frame a frame
-    }
+    (errorMessage) => {}
   ).catch(err => {
     console.error("Error al iniciar cámara:", err);
     mostrarMensaje('❌ No se pudo acceder a la cámara del dispositivo.', true);
@@ -347,14 +380,11 @@ async function detenerEscaner() {
 
   if (html5QrCode) {
     try {
-      // Validamos si efectivamente la cámara está escaneando antes de detener
       if (html5QrCode.isScanning) {
         await html5QrCode.stop();
       }
       html5QrCode.clear();
     } catch (err) {
-      // Si entra acá es porque el escáner ya estaba detenido/pausado.
-      // Lo capturamos silenciosamente para que la app continúe sin errores en pantalla.
       console.warn("Aviso de cámara al detener:", err);
     }
   }
@@ -363,24 +393,6 @@ async function detenerEscaner() {
   if (btnActivar) btnActivar.disabled = false;
 }
 
-function detenerEscanerOri() {
-  if (html5QrCode) {
-    html5QrCode.stop().then(() => {
-      html5QrCode.clear();
-      document.getElementById('reader-container').style.display = 'none';
-      document.getElementById('btnActivarEscaner').disabled = false;
-    }).catch(err => {
-      console.error(err);
-      document.getElementById('reader-container').style.display = 'none';
-      document.getElementById('btnActivarEscaner').disabled = false;
-    });
-  } else {
-    document.getElementById('reader-container').style.display = 'none';
-    document.getElementById('btnActivarEscaner').disabled = false;
-  }
-}
-
-// Parser unificado del código PDF417 de DNI Argentino
 function procesarCodigoDNI(codigoEscaneado) {
   try {
     const textoLimpio = codigoEscaneado.trim().replace(/[\r\n]+/g, '');
@@ -391,7 +403,6 @@ function procesarCodigoDNI(codigoEscaneado) {
     let dni = "";
 
     if (datos.length >= 5) {
-      // Búsqueda dinámica del DNI (campo numérico de 7 u 8 dígitos)
       const posibleDni = datos.find(item => /^\d{7,8}$/.test(item.trim()));
       
       apellido = (datos[1] || "").trim();
@@ -407,7 +418,6 @@ function procesarCodigoDNI(codigoEscaneado) {
       return;
     }
 
-    // Guardamos en la variable global
     adultoRetiro = {
       apellido: apellido,
       nombre: nombre,
@@ -415,7 +425,6 @@ function procesarCodigoDNI(codigoEscaneado) {
       dni: dni
     };
 
-    // Renderizamos la tarjeta en la pantalla
     document.getElementById('lblAdultoNombre').textContent = '👤 Retira: ' + adultoRetiro.apellidoNombre;
     document.getElementById('lblAdultoDNI').textContent = '🪪 DNI Adulto: ' + adultoRetiro.dni;
     document.getElementById('res-adulto-retiro').style.display = 'block';
@@ -440,17 +449,12 @@ async function confirmarRetiro() {
 
   try {
     await db.collection('retiros').add({
-      // Datos Estudiante
       dniEstudiante: estudianteRetiro.dni || '',
       apellidoNombreEstudiante: estudianteRetiro.apellidoNombre || '',
       curso: estudianteRetiro.curso || '',
       correo: estudianteRetiro.correo || '',
-      
-      // Datos Adulto Responsable
       dniAdulto: adultoRetiro.dni || '',
       apellidoNombreAdulto: adultoRetiro.apellidoNombre || '',
-      
-      // Metadatos
       fecha: fecha,
       hora: hora,
       notificado: false,
@@ -476,6 +480,85 @@ function cancelarRetiro() {
   document.getElementById('res-estudiante-retiro').style.display = 'none';
   document.getElementById('res-adulto-retiro').style.display = 'none';
   document.getElementById('dni-retiro').value = '';
+}
+
+// ==========================================================
+// PESTAÑA 3: BÚSQUEDA RÁPIDA DE ESTUDIANTES POR APELLIDO
+// ==========================================================
+const inputEstudiante = document.getElementById('inputBuscarEstudiante');
+let debounceTimer = null;
+
+inputEstudiante.addEventListener('input', (e) => {
+  const texto = e.target.value.trim();
+
+  if (texto.length < 4) {
+    document.getElementById('totalCoincidencias').textContent = '';
+    document.getElementById('tablaResultadosEstudiantes').innerHTML = '<p style="color:#777; margin-top:10px;">Escriba al menos 4 caracteres para buscar...</p>';
+    return;
+  }
+
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    buscarEstudiantesPorApellido(texto);
+  }, 300);
+});
+
+function capitalizarNombre(str) {
+  return str.toLowerCase().replace(/(^|[\s,.-])\w/g, function(c) {
+    return c.toUpperCase();
+  });
+}
+
+async function buscarEstudiantesPorApellido(textoIngresado) {
+  document.getElementById('tablaResultadosEstudiantes').innerHTML = '<p style="margin-top:10px;">Buscando coincidencias...</p>';
+
+  try {
+    const textoFormateado = capitalizarNombre(textoIngresado);
+    const limiteSuperior = textoFormateado + '\uf8ff';
+
+    const snap = await db.collection('estudiantes')
+      .where('apellidoNombre', '>=', textoFormateado)
+      .where('apellidoNombre', '<=', limiteSuperior)
+      .limit(30)
+      .get();
+
+    if (snap.empty) {
+      document.getElementById('totalCoincidencias').textContent = '❌ No se encontraron coincidencias para "' + textoIngresado + '".';
+      document.getElementById('tablaResultadosEstudiantes').innerHTML = '';
+      return;
+    }
+
+    const resultados = [];
+    snap.forEach(doc => {
+      resultados.push({ dni: doc.id, ...doc.data() });
+    });
+
+    document.getElementById('totalCoincidencias').textContent = `📊 Coincidencias encontradas: ${resultados.length}`;
+    
+    let html = '<table>' +
+      '<thead>' +
+        '<tr>' +
+          '<th style="width:65%;">Estudiante</th>' +
+          '<th style="width:35%;">Curso</th>' +
+        '</tr>' +
+      '</thead>' +
+      '<tbody>';
+
+    resultados.forEach(est => {
+      html += '<tr>' +
+        '<td><strong>' + (est.apellidoNombre || 'SIN NOMBRE') + '</strong><br><small style="color:#666;">DNI: ' + est.dni + '</small></td>' +
+        '<td><span class="badge badge-ok">' + (est.curso || 'Sin Curso') + '</span></td>' +
+      '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('tablaResultadosEstudiantes').innerHTML = html;
+
+  } catch (error) {
+    console.error(error);
+    document.getElementById('totalCoincidencias').textContent = '❌ Error al realizar la búsqueda.';
+    document.getElementById('tablaResultadosEstudiantes').innerHTML = '<p style="color:red; margin-top:10px;">Ocurrió un error al consultar la base de datos.</p>';
+  }
 }
 </script>
 </body>
